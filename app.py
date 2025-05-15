@@ -5,26 +5,25 @@ import numpy as np
 
 app = FastAPI(title="Emotion Chatbot API")
 
-# Load the emotion classification model once on startup
+# Load model once at startup
 classifier = pipeline(
     "text-classification",
     model="j-hartmann/emotion-english-distilroberta-base",
     return_all_scores=True
 )
 
-# Define emotion label order from model
 emotion_labels = ["anger", "disgust", "fear", "joy", "neutral", "sadness", "surprise"]
 
 class ChatRequest(BaseModel):
-    responses: list[str]  # 6 emotional responses
+    responses: list[str]
 
 class ChatResponse(BaseModel):
-    average_scores: dict
-    top_emotions: list
+    average_scores: dict[str, float]
+    top_emotions: list[str]
     final_emotion: str
 
-# Enhanced emotion prediction logic
 def determine_dominant_emotion(average_scores, top_emotions):
+    # Customize order of preference for emotions
     emotion_order = ["joy", "sadness", "anger", "fear", "disgust", "surprise", "neutral"]
     emotion_counts = {}
     for emo in top_emotions:
@@ -35,7 +34,7 @@ def determine_dominant_emotion(average_scores, top_emotions):
         freq = emotion_counts.get(emo, 0)
         avg = average_scores[emo]
         if emo == "neutral":
-            boost = avg * 0.7 + 0.05 * freq  # Down-weight neutral
+            boost = avg * 0.7 + 0.05 * freq  # penalize neutral slightly
         else:
             boost = avg + 0.1 * freq
         combined_score[emo] = boost
@@ -43,11 +42,15 @@ def determine_dominant_emotion(average_scores, top_emotions):
     sorted_emotions = sorted(combined_score.items(), key=lambda x: (-x[1], emotion_order.index(x[0])))
     return sorted_emotions[0][0]
 
+@app.get("/")
+def root():
+    return {"message": "Emotion Chatbot API is running."}
+
 @app.post("/analyze", response_model=ChatResponse)
 def analyze_emotions(chat_request: ChatRequest):
     responses = chat_request.responses
     if len(responses) != 6:
-        raise HTTPException(status_code=400, detail="Exactly 6 responses are required.")
+        raise HTTPException(status_code=400, detail="Exactly 6 responses required.")
 
     scores_matrix = []
     top_emotions = []
